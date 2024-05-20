@@ -1,0 +1,319 @@
+﻿@model List<SupplierMaintenanceWeb.Models.Entities.Supplier>
+
+@{
+    ViewData["Title"] = "Supplier Maintenance";
+}
+
+<h1>Supplier Maintenance</h1>
+
+<form id="filterForm" method="get" asp-controller="Suppliers" asp-action="Index">
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <input type="text" id="filterSupplierCode" name="supplierCode" class="form-control" placeholder="Supplier Code" value="@Context.Request.Query["supplierCode"]" />
+        </div>
+        <div class="col-md-4">
+            <select id="filterProvince" name="province" class="form-control">
+                <option value="">Select Province</option>
+                @foreach (var province in (SelectList)ViewBag.Provinces)
+                {
+                    <option value="@province.Text">@province.Text</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-4">
+            <select id="filterCity" name="City" class="form-control">
+                <option value="">Select City</option>
+            </select>
+        </div>
+    </div>
+    <div id="formFilterButtons">
+        <button type="submit" class="btn btn-success">Search</button>
+        <button type="button" class="btn btn-secondary" id="clearFilters">Clear</button>
+    </div>
+</form>
+
+
+
+<div class="row mb-3 mt-3">
+    <div class="col-md-6">
+        <form id="uploadForm" method="post" enctype="multipart/form-data" asp-controller="Suppliers" asp-action="Upload">
+            <div class="input-group mb-3">
+                <input type="file" id="excelFileInput" name="excelFile" accept=".xlsx" class="form-control" />
+                <button type="submit" class="btn btn-primary">Upload</button>
+            </div>
+        </form>
+    </div>
+    <div class="col-md-6 text-end">
+        <button type="button" id="downloadButton" class="btn btn-info" @(Model.Count == 0 ? "style=display:none;" : "")>Download</button>
+        <button type="button" id="showFormButton" class="btn btn-primary">Add</button>
+        <button type="button" id="editButton" class="btn btn-warning" @(Model.Count == 0 ? "style=display:none;" : "")>Edit</button>
+        <button type="button" id="deleteButton" class="btn btn-danger" @(Model.Count == 0 ? "style=display:none;" : "")>Delete</button>
+    </div>
+</div>
+
+<form id="supplierForm" method="post">
+    <table class="table">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Supplier Code</th>
+                <th>Supplier Name</th>
+                <th>Address</th>
+                <th>Province</th>
+                <th>City</th>
+                <th>PIC</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr id="newSupplierRow" style="display: none;">
+                <td></td>
+                <td>
+                    <input type="text" id="newSupplierCode" name="SupplierCode" class="form-control" placeholder="Supplier Code" />
+                </td>
+                <td>
+                    <input type="text" id="newName" name="Name" class="form-control" placeholder="Supplier Name" />
+                </td>
+                <td>
+                    <input type="text" id="newAddress" name="Address" class="form-control" placeholder="Address" />
+                </td>
+                <td>
+                    <select id="newProvince" name="Province" class="form-control">
+                        <option value="">Select Province</option>
+                        @foreach (var province in (SelectList)ViewBag.Provinces)
+                        {
+                            <option value="@province.Text">@province.Text</option>
+                        }
+                    </select>
+                </td>
+                <td>
+                    <select id="newCity" name="City" class="form-control">
+                        <option value="">Select City</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="text" id="newPIC" name="PIC" class="form-control" placeholder="PIC" />
+                </td>
+            </tr>
+            @foreach (var supplier in Model)
+            {
+                <tr data-supplier-code="@supplier.SupplierCode">
+                    <td>
+                        <input type="checkbox" name="selectedSuppliers" value="@supplier.SupplierCode" />
+                    </td>
+                    <td class="supplier-data" name="SupplierCode">@supplier.SupplierCode</td>
+                    <td class="supplier-data" name="Name">@supplier.Name</td>
+                    <td class="supplier-data" name="Address">@supplier.Address</td>
+                    <td class="supplier-data" name="Province" data-value="@supplier.Province">@supplier.Province</td>
+                    <td class="supplier-data" name="City" data-value="@supplier.City">@supplier.City</td>
+                    <td class="supplier-data" name="PIC">@supplier.PIC</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <div id="formButtons" style="display: none;">
+        <button type="submit" id="saveButton" class="btn btn-success">Save</button>
+        <button type="button" id="cancelButton" class="btn btn-secondary">Cancel</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        let locations = @Html.Raw(Json.Serialize(ViewBag.Locations));
+        let editMode = false;
+        let editRow = null;
+        let originalData = [];
+        let editingInputs = [];
+
+        document.getElementById('newProvince').addEventListener('change', function () {
+            updateCityDropdown(this.value, 'newCity');
+        });
+
+        document.getElementById('filterProvince').addEventListener('change', function () {
+            updateCityDropdown(this.value, 'filterCity');
+        });
+
+        window.onload = function () {
+            let selectedProvince = document.getElementById('filterProvince').value;
+            if (selectedProvince) {
+                updateCityDropdown(selectedProvince, 'filterCity');
+            }
+        };
+
+        document.getElementById('clearFilters').addEventListener('click', function () {
+            document.getElementById('filterSupplierCode').value = '';
+            document.getElementById('filterProvince').selectedIndex = 0;
+            document.getElementById('filterCity').innerHTML = '<option value="">Select City</option>';
+            document.getElementById('filterForm').submit();
+        });
+
+        document.getElementById('downloadButton').addEventListener('click', function () {
+            window.location.href = '@Url.Action("Download", "Suppliers")';
+        });
+
+        function updateCityDropdown(province, cityDropdownId) {
+            let citySelect = document.getElementById(cityDropdownId);
+            citySelect.innerHTML = '<option value="">Select City</option>';
+
+            if (province) {
+                let filteredCities = locations.filter(function (location) {
+                    return location.province === province;
+                });
+
+                filteredCities.forEach(function (location) {
+                    let option = document.createElement('option');
+
+                    option.value = location.string;
+                    option.text = location.string;
+                    citySelect.appendChild(option);
+                });
+            }
+        }
+
+        document.getElementById('showFormButton').addEventListener('click', function () {
+            document.getElementById('newSupplierRow').style.display = 'table-row';
+            document.getElementById('formButtons').style.display = 'block';
+            document.getElementById('supplierForm').action = '/Suppliers/Add';
+
+            let inputs = document.querySelectorAll('#newSupplierRow input, #newSupplierRow select');
+            inputs.forEach(input => input.setAttribute('required', 'required'));
+
+            // Hide other buttons
+            document.getElementById('downloadButton').style.display = 'none';
+            document.getElementById('showFormButton').style.display = 'none';
+            document.getElementById('editButton').style.display = 'none';
+            document.getElementById('deleteButton').style.display = 'none';
+        });
+
+        document.getElementById('cancelButton').addEventListener('click', function () {
+            document.getElementById('newSupplierRow').style.display = 'none';
+            document.getElementById('formButtons').style.display = 'none';
+            let inputs = document.querySelectorAll('#newSupplierRow input, #newSupplierRow select');
+            inputs.forEach(input => {
+                input.value = '';
+                input.removeAttribute('required');
+            });
+
+            // Show other buttons
+            document.getElementById('downloadButton').style.display = 'inline-block';
+            document.getElementById('showFormButton').style.display = 'inline-block';
+            document.getElementById('editButton').style.display = 'inline-block';
+            document.getElementById('deleteButton').style.display = 'inline-block';
+
+            if (editMode && editRow) {
+                let cells = editRow.querySelectorAll('.supplier-data');
+                cells.forEach((cell, index) => {
+                    cell.innerHTML = originalData[index];
+                });
+                editingInputs.forEach(input => input.remove());
+                editMode = false;
+                editRow = null;
+                originalData = [];
+                editingInputs = [];
+            }
+        });
+
+        document.getElementById('editButton').addEventListener('click', function () {
+            let selectedCheckboxes = document.querySelectorAll('input[name="selectedSuppliers"]:checked');
+            if (selectedCheckboxes.length === 1) {
+                editMode = true;
+                editRow = selectedCheckboxes[0].closest('tr');
+                let supplierCode = editRow.dataset.supplierCode;
+                let dataCells = editRow.querySelectorAll('.supplier-data');
+                let inputs = document.querySelectorAll('#newSupplierRow input, #newSupplierRow select');
+                inputs.forEach(input => input.disabled = true);
+
+                originalData = Array.from(dataCells).map(cell => cell.textContent);
+
+                dataCells.forEach(function (cell, index) {
+                    let input;
+                    if (cell.getAttribute('name') === 'Province') {
+                        input = document.createElement('select');
+                        input.className = 'form-control';
+                        input.name = cell.getAttribute('name');
+                        input.id = 'editProvince';
+                        let provinces = @Html.Raw(Json.Serialize(ViewBag.Provinces));
+                        input.innerHTML = '<option value="">Select Province</option>';
+                        provinces.forEach(function (province) {
+                            let option = document.createElement('option');
+                            option.value = province.text;
+                            option.text = province.text;
+                            option.selected = (province.text === cell.dataset.value);
+                            input.appendChild(option);
+                        });
+                        input.addEventListener('change', function () {
+                            // Create the editCity dropdown if it doesn't exist
+                            if (!document.getElementById('editCity')) {
+                                let cityCell = editRow.querySelector('[name="City"]');
+                                cityCell.innerHTML = '<select id="editCity" class="form-control" name="City"></select>';
+                            }
+                            updateCityDropdown(this.value, 'editCity');
+                        });
+                    } else if (cell.getAttribute('name') === 'City') {
+                        let selectedProvince = editRow.querySelector('#editProvince').value;
+                        if (!document.getElementById('editCity')) {
+                            input = document.createElement('select');
+                            input.className = 'form-control';
+                            input.name = cell.getAttribute('name');
+                            input.id = 'editCity';
+                            let cities = locations.filter(function (location) {
+                                return location.province === selectedProvince;
+                            });
+                            input.innerHTML = '<option value="">Select City</option>';
+                            cities.forEach(function (city) {
+                                let option = document.createElement('option');
+                                option.value = city.string;
+                                option.text = city.string;
+                                option.selected = (city.string === cell.dataset.value);
+                                input.appendChild(option);
+                            });
+                        } else {
+                            input = document.getElementById('editCity');
+                            updateCityDropdown(selectedProvince, 'editCity');
+                        }
+                    } else {
+                        input = document.createElement('input');
+                        input.type = 'text';
+                        input.className = 'form-control';
+                        input.value = cell.textContent;
+                        input.name = cell.getAttribute('name');
+                    }
+
+                    if (index === 0) {
+                        input.readOnly = true;
+                    }
+
+                    cell.innerHTML = '';
+                    cell.appendChild(input);
+                    editingInputs.push(input);
+                });
+
+                document.getElementById('formButtons').style.display = 'block';
+                document.getElementById('supplierForm').action = '/Suppliers/Edit';
+                let newSupplierInputs = document.querySelectorAll('#newSupplierRow input, #newSupplierRow select');
+                newSupplierInputs.forEach(input => input.removeAttribute('required'));
+
+                // Hide other buttons
+                document.getElementById('downloadButton').style.display = 'none';
+                document.getElementById('showFormButton').style.display = 'none';
+                document.getElementById('editButton').style.display = 'none';
+                document.getElementById('deleteButton').style.display = 'none';
+            } else {
+                alert('Please select exactly one supplier to edit.');
+            }
+        });
+
+        document.getElementById('deleteButton').addEventListener('click', function () {
+            let inputs = document.querySelectorAll('#newSupplierRow input, #newSupplierRow select');
+            inputs.forEach(input => input.disabled = true);
+            let selectedCheckboxes = document.querySelectorAll('input[name="selectedSuppliers"]:checked');
+            if (selectedCheckboxes.length > 0) {
+                if (confirm('Are you sure you want to delete the selected suppliers?')) {
+                    document.getElementById('supplierForm').action = '/Suppliers/Delete';
+                    document.getElementById('supplierForm').submit();
+                }
+            } else {
+                alert('Please select at least one supplier to delete.');
+            }
+        });
+    </script>
+}
